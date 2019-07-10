@@ -4,6 +4,7 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
+// Quelle: https://www.smarthome-tricks.de/software-iobroker/esp8266-max7219-mqtt-matrixdisplay-fuer-iobroker/
 // Belegung
 //DOT Matrix:       ESP8266 NodeMCU:
 //VCC               5V (VUSB)
@@ -13,7 +14,7 @@
 //CLK               D5 (GPIO14)
 
 int pinCS = 0;                           //Für den PIN Select habe ich GPIO0 gewählt
-int numberOfHorizontalDisplays = 12;     //Anzahl der Module Horizontal
+int numberOfHorizontalDisplays = 4;     //Anzahl der Module Horizontal
 int numberOfVerticalDisplays = 1;        //Anzahl der Module Vertikal
 
 const char* ssid = "<WIFI-SSID>";
@@ -29,6 +30,7 @@ int ScrollWait = 70;                  // Zeit in ms für Scroll Geschwindigkeit
 int helligkeit = 3;             // Helligkeit des DisplaysDefault Helligkeit 0 bis 15
 int spacer = 1;                 // Länge eines Leerzeichens
 int width = 5 + spacer;         // Schriftgröße
+int modus = 1;                  // Modus 0 = Marquee, 1 = static, 2 = pan
 String MatrixText = "...";
 
 void setup_wifi() {
@@ -75,7 +77,11 @@ void MQTTCallback(char* topic, byte* payload, unsigned int length) {
   if(strcmp(topic, "MatrixDisplay2/scrollwait") == 0) { 
     Serial.println("set new ScrollWait");      
     ScrollWait = PayloadString.toInt();
-  }  
+  }
+   if(strcmp(topic, "MatrixDisplay2/modus") == 0) { 
+    Serial.println("set new Modus");      
+    modus = PayloadString.toInt();
+  }
 }
 
 void reconnect() {
@@ -89,7 +95,8 @@ void reconnect() {
       Serial.println("subscribe objects"); 
       client.subscribe("MatrixDisplay2/text");  
       client.subscribe("MatrixDisplay2/intensity");  
-      client.subscribe("MatrixDisplay2/scrollwait");      
+      client.subscribe("MatrixDisplay2/scrollwait");
+      client.subscribe("MatrixDisplay2/modus");
     }
     else
     {
@@ -115,17 +122,19 @@ void setup() {
   Serial.println("Boot display...");
 
   setup_wifi();
-  client.setServer(mqtt_server, 1883);
+  client.setServer(mqtt_server, 1883);   //check if MQTT Port is correct
   client.setCallback(MQTTCallback);  
 }
 
 void printMatrix() {
+  switch (modus) {
+  case 0:
   for ( int i = 0 ; i < width * MatrixText.length() + matrix.width() - 1 - spacer; i++ ) {
 
     matrix.fillScreen(LOW);
 
     int letter = i / width;
-    int x = (matrix.width() - 1) - i % width;
+    int x = (matrix.width() - 2) - i % width;
     int y = (matrix.height() - 8) / 2; //Zentrieren des Textes Vertikal
 
     while ( x + width - spacer >= 0 && letter >= 0 ) {
@@ -140,6 +149,25 @@ void printMatrix() {
 
     matrix.write();
     delay(ScrollWait);
+  }
+  break;
+  case 1:
+    matrix.fillScreen(LOW);
+    int letter = 5;
+    int x = 32;
+    int y = (matrix.height() - 8) / 2; //Zentrieren des Textes Vertikal
+    while ( x + width - spacer >= 0 && letter >= 0 ) {
+      if ( letter < MatrixText.length() ) {
+        matrix.drawChar(x, y, MatrixText[letter], HIGH, LOW, 1);
+      }
+      letter--;
+      x -= width;
+
+      client.loop(); 
+    }
+    matrix.write();
+    delay(ScrollWait);
+  break;
   }
 }
 
